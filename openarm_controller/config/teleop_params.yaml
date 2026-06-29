@@ -1,0 +1,47 @@
+openarm_teleop_node:
+  ros__parameters:
+    urdf_path: ""
+    left_ee_frame: "openarm_left_joint7"
+    right_ee_frame: "openarm_right_joint7"
+    control_rate: 100.0
+    grip_threshold: 0.5
+
+    ik:
+      damping: 0.05
+      position_weight: 50.0
+      rotation_weight: 1.0
+
+    null_space:
+      joint_regularization_weight: 0.2
+      joint3_regularization_weight: 0.05
+      joint4_regularization_weight: 0.12
+      q_home: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    max_step_deg_joint1: 4.0
+    max_step_deg_joint2: 4.0
+    max_step_deg_joint3: 4.0
+    max_step_deg_joint4: 4.0
+    max_step_deg_joint5: 4.0
+    max_step_deg_joint6: 4.0
+    max_step_deg_joint7: 4.0
+
+    fast_max_step_deg_joint1: 20.0
+    fast_max_step_deg_joint2: 16.0
+    fast_max_step_deg_joint3: 12.0
+    fast_max_step_deg_joint4: 12.0
+    fast_max_step_deg_joint5: 14.0
+    fast_max_step_deg_joint6: 8.0
+    fast_max_step_deg_joint7: 12.0
+
+    step_threshold_deg_joint1: 4.0
+    step_threshold_deg_joint2: 4.0
+    step_threshold_deg_joint3: 4.0
+    step_threshold_deg_joint4: 4.0
+    step_threshold_deg_joint5: 4.0
+    step_threshold_deg_joint6: 4.0
+    step_threshold_deg_joint7: 4.0
+
+    q_filter_weights: [0.25, 0.2, 0.2, 0.15, 0.1, 0.1]
+    button_motion_step_deg: 0.5
+    button_motion_done_tolerance_deg: 1.0
