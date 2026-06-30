@@ -1,0 +1,38 @@
+state_dim: 16
+action_dim: 16
+ee_pose_dim: 16
+
+left_arm_joints:
+  - openarm_left_joint1
+  - openarm_left_joint2
+  - openarm_left_joint3
+  - openarm_left_joint4
+  - openarm_left_joint5
+  - openarm_left_joint6
+  - openarm_left_joint7
+
+right_arm_joints:
+  - openarm_right_joint1
+  - openarm_right_joint2
+  - openarm_right_joint3
+  - openarm_right_joint4
+  - openarm_right_joint5
+  - openarm_right_joint6
+  - openarm_right_joint7
+
+left_gripper_joint: openarm_left_gripper_joint
+right_gripper_joint: openarm_right_gripper_joint
+
+features:
+  observation.images.chest: image
+  observation.images.left_wrist: image
+  observation.images.right_wrist: image
+  observation.state: float32[16]
+  observation.ee_pose: float32[16]
+  action: float32[16]
+  sample_type: string
+  confidence: float32
+  task: string
+  episode_index: int64
+  frame_index: int64
+  timestamp: float64

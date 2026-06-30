@@ -1,0 +1,5 @@
+backend: precomputed
+precomputed_file: ""
+num_keypoints: 21
+pose_format: xyz_quat_xyzw
+missing_value: nan

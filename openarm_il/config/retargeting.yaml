@@ -1,0 +1,19 @@
+left:
+  scale: 1.0
+  p_ee_init: [0.3, 0.2, 0.25]
+  R_align_rpy: [0.0, 0.0, 0.0]
+  R_offset_rpy: [0.0, 0.0, 0.0]
+  workspace_min: [0.1, -0.5, 0.05]
+  workspace_max: [0.7, 0.5, 0.6]
+
+right:
+  scale: 1.0
+  p_ee_init: [0.3, -0.2, 0.25]
+  R_align_rpy: [0.0, 0.0, 0.0]
+  R_offset_rpy: [0.0, 0.0, 0.0]
+  workspace_min: [0.1, -0.5, 0.05]
+  workspace_max: [0.7, 0.5, 0.6]
+
+smoothing:
+  enable: true
+  window_size: 5

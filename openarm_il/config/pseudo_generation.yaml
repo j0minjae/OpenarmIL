@@ -1,0 +1,25 @@
+output_dir: ~/datasets/openarm_il/raw_pseudo
+zero_missing_modalities: true
+zero_wrist_images: true
+zero_robot_state: true
+action_space: joint
+allow_ik_disabled: true
+invalid_action_fill: zeros
+
+confidence:
+  alpha: 1.0
+  beta: 2.0
+  gamma: 1.0
+  delta: 1.0
+  min_confidence: 0.0
+  max_confidence: 1.0
+
+ik:
+  enable: false
+  urdf_path: ""
+  left_ee_frame: ""
+  right_ee_frame: ""
+  initial_q_left: [0,0,0,0,0,0,0]
+  initial_q_right: [0,0,0,0,0,0,0]
+  max_iters: 100
+  tolerance: 1.0e-4

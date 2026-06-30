@@ -1,0 +1,27 @@
+output_dir: ~/datasets/openarm_il/raw_real
+task: default_task
+episode_id: "0000"
+duration: 30.0
+sync_tolerance_sec: 0.05
+record_rate_hz: 30
+action_source: next_state
+
+image:
+  width: 640
+  height: 480
+  save_format: png
+
+required_streams:
+  - joint_states
+  - chest
+
+optional_streams:
+  - left_wrist
+  - right_wrist
+  - actions
+
+fk:
+  enable_fk: false
+  urdf_path: ""
+  left_ee_frame: ""
+  right_ee_frame: ""

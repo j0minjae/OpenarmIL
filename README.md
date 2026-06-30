@@ -1,176 +1,242 @@
-# OpenarmXR 워크스페이스
+# OpenarmIL Workspace
 
-VR 헤드셋(Pico / Meta Quest)을 이용한 OpenArm 양팔 로봇 텔레오퍼레이션 시스템.
+OpenArm V10 bimanual robot 관련 ROS2 패키지와 imitation learning 데이터 수집 패키지를 포함하는 워크스페이스입니다.
 
 ## 패키지 구성
 
 | 패키지 | 설명 |
 |--------|------|
-| `openarm_controller` | **자체 Python IK 솔버(SoT) + VR teleop 노드 (오픈소스)** |
-| `openarm_description` | openarm v1.0 URDF/메쉬/RViz 설정 |
-| `openarmx_description` | openarmx URDF/메쉬/RViz 설정 |
-| `openarmx_teleop_vr` | VR UDP bridge + launch 파일 모음 |
-| `openarmx_teleop_vr_apk` | VR 헤드셋용 APK (Pico, Meta Quest) |
-| `openarm_ros2` | 로봇 bringup + hardware interface (ros2_control) |
-| `openarm_can` | CAN 통신 라이브러리 |
+| `openarm_il` | Phase 1 real robot demonstration collection, validation, visualization, LeRobot-style export |
+| `openarm_controller` | Python IK solver and VR teleop node |
+| `openarm_description` | OpenArm URDF/mesh/RViz assets |
+| `openarm_ros2` | OpenArm bringup and ros2_control hardware interface |
+| `openarm_can` | CAN communication library |
+| `openarmx_description` | OpenArmX description assets |
+| `openarmx_teleop_vr` | VR teleoperation utilities |
 
-## IK 솔버 종류
+상세 Phase 1 문서는 `openarm_il/README.md`를 기준으로 관리합니다.
 
-| 솔버 | 패키지 | 방식 | URDF | 특징 |
-|------|--------|------|------|------|
-| **openarm_controller** | `openarm_controller` | SoT (Stack of Tasks) | openarm_ 직접 | 오픈소스, q_home 수정 가능, remapper 불필요 |
-| openarmx_arm_driver | `openarmx_teleop_vr` | 비공개 | openarmx_ 필요 | 바이너리, 수정 불가, remapper 필요 |
+## Phase 1 사용법
 
-> 상세 IK 방법론은 `IK방법론.md` 참조
+Phase 1은 실제 OpenArm V10 bimanual 로봇 demonstration을 passive 방식으로 수집하고, raw episode를 검증/시각화한 뒤 ACT 학습용 LeRobot-style dataset으로 변환합니다.
 
-## 사전 요구사항
+Phase 1에서 하지 않는 것:
+
+- human RGB collection
+- hand pose tracking
+- pseudo demonstration generation
+- retargeting
+- GR00T/VLA feature
+
+### 1. 빌드
 
 ```bash
+cd /home/home/Project/OpenarmIL/src
 source /opt/ros/humble/setup.bash
-pip3 install "numpy<2"
-sudo apt install adb
-# openarmx IK 사용 시에만 필요:
-# pip3 install openarmx-arm-driver
-```
-
-## VR 헤드셋 APK 설치
-
-### Pico
-```bash
-adb install openarmx_teleop_vr_apk/openarmx-vr-pico.apk
-```
-
-### Meta Quest
-```bash
-adb install openarmx_teleop_vr_apk/openarmx-vr-quest.apk
-```
-
-## 빌드
-
-```bash
-cd ~/Project/OpenarmXR
-source /opt/ros/humble/setup.bash
-colcon build
+colcon build --packages-select openarm_il
 source install/setup.bash
 ```
 
-## 실행 방법
-
-> launch 전에 잔류 프로세스 정리:
-```bash
-pkill -9 -f "ros2_control_node|controller_manager|rviz2|bridge_vr|vr_teleop|robot_state_publisher|spawner|openarmx_teleop|openarm_teleop"
-```
-
-### 1. 로봇 모델 시각화 (RViz + GUI 슬라이더)
+설치된 실행 파일 확인:
 
 ```bash
-ros2 launch openarmx_description display_openarmx.launch.py arm_type:=v10 bimanual:=true
-ros2 launch openarm_description display_openarm.launch.py arm_type:=v10 bimanual:=true
+ros2 pkg executables openarm_il
 ```
 
-### 2. VR 시뮬레이션 (RViz + fake hardware)
+정상 출력 예시:
 
-| 명령어 | IK 솔버 | 모델 |
-|--------|---------|------|
-| `ros2 launch openarm_controller teleop_sim.launch.py` | **openarm_controller (SoT)** | openarm |
-| `ros2 launch openarmx_teleop_vr openarm_teleop_vr_sim.launch.py` | openarmx_arm_driver | openarm (변환 URDF) |
-| `ros2 launch openarmx_teleop_vr openarmx_teleop_vr_sim.launch.py` | openarmx_arm_driver | openarmx |
+```text
+openarm_il collect_real_demo
+openarm_il convert_to_lerobot
+openarm_il inspect_topics
+openarm_il validate_dataset
+openarm_il visualize_episode
+```
 
-### 3. 안전 테스트 (fake hardware + 실제 파이프라인)
+### 2. 설정 파일 확인
 
-실제 로봇 적용 전, CAN/모터 없이 전체 경로를 검증합니다.
+기본 설정 파일:
 
-**openarm_controller 사용 시:**
+```text
+openarm_il/config/real_collection.yaml
+openarm_il/config/camera_topics.yaml
+openarm_il/config/dataset_schema.yaml
+```
+
+주요 기본값:
+
+- `action_source: next_state`
+- `sync_tolerance_sec: 0.05`
+- required streams: `joint_states`, `chest`
+- optional streams: `left_wrist`, `right_wrist`, `actions`
+- FK disabled by default: `fk.enable_fk: false`
+
+실제 카메라/컨트롤러 토픽이 다르면 `openarm_il/config/camera_topics.yaml`을 먼저 수정합니다.
+
+### 3. 토픽 상태 점검
+
+OpenArm bringup, ros2_control controller, RealSense camera driver를 먼저 실행한 뒤 확인합니다.
+
 ```bash
-# 터미널 1
-ros2 launch openarm_bringup openarm.bimanual.launch.py \
-    use_fake_hardware:=true \
-    robot_controller:=forward_position_controller \
-    controllers_file:=openarm_bimanual_controllers_vr_teleop.yaml
-
-# 터미널 2
-ros2 launch openarmx_teleop_vr openarm_controller_real.launch.py
+ros2 run openarm_il inspect_topics
 ```
 
-**openarmx_arm_driver 사용 시:**
+필수 토픽:
+
+- `/joint_states`
+- chest RGB camera topic, 기본값 `/camera/camera/color/image_raw`
+
+`openarm_il`은 recorder이며 로봇 command를 publish하지 않습니다.
+
+### 4. Timed recording
+
 ```bash
-# 터미널 1
-ros2 launch openarm_bringup openarm.bimanual.launch.py \
-    use_fake_hardware:=true \
-    robot_controller:=forward_position_controller \
-    controllers_file:=openarm_bimanual_controllers_vr_teleop.yaml
-
-# 터미널 2
-ros2 launch openarmx_teleop_vr openarm_teleop_vr_real.launch.py
+ros2 run openarm_il collect_real_demo \
+  --task handover \
+  --episode-id 0001 \
+  --duration 30 \
+  --output-dir ~/datasets/openarm_il/raw_real
 ```
 
-**검증 항목:**
+저장 위치:
+
+```text
+~/datasets/openarm_il/raw_real/handover/episode_0001/
+```
+
+### 5. Keyboard recording
+
 ```bash
-ros2 topic echo /joint_states --once | grep "name:" -A 16
-ros2 topic echo /left_forward_position_controller/commands
-ros2 topic hz /left_forward_position_controller/commands
+ros2 run openarm_il collect_real_demo \
+  --task handover \
+  --episode-id 0001 \
+  --output-dir ~/datasets/openarm_il/raw_real \
+  --keyboard
 ```
 
-### 4. 실제 로봇 VR 텔레오퍼레이션
+키 입력:
 
-**CAN 초기화 (공통):**
+```text
+s : start recording
+q : stop and save
+x : cancel episode
+```
+
+### 6. Raw episode 검증
+
 ```bash
-sudo ip link set can0 type can bitrate 1000000 dbitrate 5000000 fd on && sudo ip link set can0 up
-sudo ip link set can1 type can bitrate 1000000 dbitrate 5000000 fd on && sudo ip link set can1 up
-ip -details link show can0
-ip -details link show can1
+cd /home/home/Project/OpenarmIL/src/openarm_il
+python3 scripts/validate_dataset.py \
+  --raw-dir ~/datasets/openarm_il/raw_real/handover/episode_0001
 ```
 
-**openarm_controller 사용 (권장):**
+전체 raw dataset root 검증:
+
 ```bash
-# 터미널 1: bringup
-ros2 launch openarm_bringup openarm.bimanual.launch.py \
-    use_fake_hardware:=false \
-    robot_controller:=forward_position_controller \
-    controllers_file:=openarm_bimanual_controllers_vr_teleop.yaml \
-    right_can_interface:=can0 left_can_interface:=can1
-
-# 터미널 2: VR teleop
-ros2 launch openarmx_teleop_vr openarm_controller_real.launch.py
+python3 scripts/validate_dataset.py \
+  --raw-dir ~/datasets/openarm_il/raw_real
 ```
 
-**openarmx_arm_driver 사용:**
+정상 출력 예시:
+
+```text
+ok: True
+episodes: 1
+frames: 900
+```
+
+### 7. Episode 시각화
+
 ```bash
-# 터미널 1: bringup
-ros2 launch openarm_bringup openarm.bimanual.launch.py \
-    use_fake_hardware:=false \
-    robot_controller:=forward_position_controller \
-    controllers_file:=openarm_bimanual_controllers_vr_teleop.yaml \
-    right_can_interface:=can0 left_can_interface:=can1
-
-# 터미널 2: VR teleop (remapper 포함)
-ros2 launch openarmx_teleop_vr openarm_teleop_vr_real.launch.py
+python3 scripts/visualize_episode.py \
+  --episode-dir ~/datasets/openarm_il/raw_real/handover/episode_0001 \
+  --save-dir /tmp/openarm_il_plots
 ```
 
-## 런치 파일 요약
+생성 파일:
 
-| 런치 파일 | IK 솔버 | 용도 |
-|-----------|---------|------|
-| `openarm_controller/teleop_sim.launch.py` | openarm_controller (SoT) | 시뮬레이션 |
-| `openarm_controller_real.launch.py` | openarm_controller (SoT) | **실제 로봇 (권장)** |
-| `openarm_teleop_vr_sim.launch.py` | openarmx_arm_driver | 시뮬레이션 (변환 URDF) |
-| `openarm_teleop_vr_real.launch.py` | openarmx_arm_driver | 실제 로봇 (remapper) |
-| `openarmx_teleop_vr_sim.launch.py` | openarmx_arm_driver | 시뮬레이션 (openarmx) |
-
-## 데이터 흐름
-
+```text
+/tmp/openarm_il_plots/trajectories.png
+/tmp/openarm_il_plots/first_chest_frame.png
 ```
-VR 헤드셋 (Pico / Meta Quest)
-    │  UDP (port 5100)
-    ▼
-openarmx_teleop_bridge_vr_node (C++)
-    │  ROS2 토픽 (PoseStamped, Float32, Bool)
-    ▼
-openarm_teleop_node (openarm_controller, SoT IK)
-    │  Float64MultiArray (openarm_ prefix 직접 사용)
-    ▼
-forward_position_controller (ros2_control)
-    │  관절 명령
-    ▼
-로봇 하드웨어 또는 fake hardware → joint_states → RViz
+
+### 8. LeRobot-style dataset export
+
+```bash
+python3 scripts/convert_to_lerobot.py \
+  --raw-dir ~/datasets/openarm_il/raw_real \
+  --output-dir ~/datasets/openarm_il/lerobot_real
 ```
+
+출력 구조:
+
+```text
+lerobot_real/
+├── meta/
+│   ├── info.json
+│   └── episodes.jsonl
+└── data/
+    ├── frames.jsonl
+    └── <task>/episode_<episode_id>/
+```
+
+### 9. 테스트
+
+```bash
+cd /home/home/Project/OpenarmIL/src/openarm_il
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -v
+```
+
+## Troubleshooting
+
+- RealSense camera not publishing: camera driver 실행 여부와 `ros2 topic list | grep image_raw`를 확인합니다.
+- Missing wrist cameras: optional stream이므로 zero image로 padding됩니다.
+- `/joint_states` not available: OpenArm bringup과 controller 상태를 먼저 확인합니다.
+- Action command topics unavailable: Phase 1 기본값인 `action_source: next_state`를 사용합니다.
+- FK disabled: 기본적으로 `observation.ee_pose`는 zero-filled입니다.
+- Sync drops too many frames: `sync_tolerance_sec`를 키우거나 `record_rate_hz`를 낮춥니다.
+
+## Phase 2 요약
+
+Phase 2는 human RGB를 직접 학습 데이터로 쓰지 않고, hand pose 추출용으로만 사용합니다. 최종 산출물은 Phase 1과 같은 raw episode schema를 따르는 `raw_pseudo` dataset입니다.
+
+기본 흐름:
+
+```bash
+cd /home/home/Project/OpenarmIL/src/openarm_il
+
+python3 scripts/record_human_rgb.py \
+  --camera /dev/video0 \
+  --task handover \
+  --episode-id 0001 \
+  --output-dir ~/datasets/openarm_il/raw_human \
+  --duration 30
+
+python3 scripts/extract_hand_pose.py \
+  --backend precomputed \
+  --input ~/datasets/openarm_il/raw_human/handover/episode_0001 \
+  --precomputed-file ~/datasets/openarm_il/precomputed_hand_pose/handover_0001.jsonl \
+  --output ~/datasets/openarm_il/hand_pose/handover/episode_0001
+
+python3 scripts/generate_pseudo_demo.py \
+  --human-episode ~/datasets/openarm_il/raw_human/handover/episode_0001 \
+  --hand-pose ~/datasets/openarm_il/hand_pose/handover/episode_0001 \
+  --output-dir ~/datasets/openarm_il/raw_pseudo \
+  --task handover \
+  --episode-id 0001
+
+python3 scripts/validate_pseudo_demo.py \
+  --raw-dir ~/datasets/openarm_il/raw_pseudo/handover/episode_0001
+
+python3 scripts/convert_to_lerobot.py \
+  --real-dir ~/datasets/openarm_il/raw_real \
+  --pseudo-dir ~/datasets/openarm_il/raw_pseudo \
+  --output-dir ~/datasets/openarm_il/lerobot_pseudo_real
+```
+
+상세 문서:
+
+- `openarm_il/docs/HUMAN_RGB_COLLECTION.md`
+- `openarm_il/docs/HAND_POSE_FORMAT.md`
+- `openarm_il/docs/RETARGETING.md`
+- `openarm_il/docs/PSEUDO_DEMONSTRATION.md`

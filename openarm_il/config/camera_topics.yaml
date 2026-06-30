@@ -1,0 +1,12 @@
+joint_states: /joint_states
+
+cameras:
+  chest: /camera/camera/color/image_raw
+  left_wrist: /left_wrist_camera/color/image_raw
+  right_wrist: /right_wrist_camera/color/image_raw
+
+actions:
+  left_arm: /left_forward_position_controller/commands
+  right_arm: /right_forward_position_controller/commands
+  left_gripper: /left_gripper_controller/joint_trajectory
+  right_gripper: /right_gripper_controller/joint_trajectory

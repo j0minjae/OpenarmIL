@@ -1,0 +1,9 @@
+output_dir: ~/datasets/openarm_il/raw_human
+task: default_task
+episode_id: "0000"
+camera: /dev/video0
+fps: 30
+width: 640
+height: 480
+duration: 30
+save_format: png
