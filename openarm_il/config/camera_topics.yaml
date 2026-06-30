@@ -1,9 +1,14 @@
 joint_states: /joint_states
 
 cameras:
+  # RealSense D435 chest camera serial mapping:
+  #   chest: 332322072253
   chest: /camera/camera/color/image_raw
-  left_wrist: /left_wrist_camera/color/image_raw
-  right_wrist: /right_wrist_camera/color/image_raw
+  # RealSense D435 wrist camera serial mapping:
+  #   left_wrist: 317222072848
+  #   right_wrist: 327122079310
+  left_wrist: /left_wrist_camera/left_wrist_camera/color/image_raw
+  right_wrist: /right_wrist_camera/right_wrist_camera/color/image_raw
 
 actions:
   left_arm: /left_forward_position_controller/commands

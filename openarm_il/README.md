@@ -2,6 +2,8 @@
 
 `openarm_il` is a ROS2 Humble `ament_python` package for passive OpenArm V10 bimanual real-robot demonstration collection, raw episode validation, visualization, and offline LeRobot-style export for ACT imitation learning.
 
+The current Phase 1 interface also exposes an `OpenArmRobot` adapter for LeRobot `record`-style collection. LeRobot is not installed in this workspace, so the integration is implemented through a local compatibility shim and mockable Robot API instead of depending on live LeRobot imports during tests.
+
 Phase 1 scope is intentionally narrow:
 
 - OpenArm real robot demonstration recording
@@ -31,6 +33,41 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -v
 ## Phase 1 사용법
 
 아래 순서대로 진행하면 실제 OpenArm V10 bimanual 로봇 데모를 수집하고, raw episode 검증 후 ACT 학습용 LeRobot-style dataset으로 변환할 수 있습니다.
+
+### 0. LeRobot Robot API 기반 수집 경로
+
+새 SRS 기준의 권장 경로는 `OpenArmRobot`을 LeRobot `record`에서 사용하는 것입니다.
+
+```bash
+cd /home/home/Project/OpenarmIL/src
+source /opt/ros/humble/setup.bash
+colcon build --packages-select openarm_il
+source install/setup.bash
+ros2 run openarm_il check_robot --mock
+ros2 run openarm_il print_observation --mock
+```
+
+Python factory:
+
+```python
+from openarm_il.lerobot_compat import create_openarm_robot
+
+robot = create_openarm_robot()
+robot.connect()
+obs = robot.read_observation()
+robot.send_action(action_16d)
+robot.disconnect()
+```
+
+LeRobot이 설치된 환경에서는 해당 버전의 `record` CLI/registry 방식에 맞춰 `openarm_il.openarm_robot.OpenArmRobot` 또는 `openarm_il.lerobot_compat.create_openarm_robot`을 등록해 사용합니다. 현재 로컬 환경에는 LeRobot Python package가 없어 실제 LeRobot CLI smoke test는 수행하지 않았습니다.
+
+관련 문서:
+
+- `docs/PHASE1_OVERVIEW.md`
+- `docs/LEROBOT_RECORD.md`
+- `docs/OPENARM_ROBOT_API.md`
+- `docs/ROS_TOPICS.md`
+- `docs/TROUBLESHOOTING.md`
 
 ### 1. ROS2 환경 빌드
 
@@ -277,7 +314,53 @@ Defaults are configured in `config/camera_topics.yaml`:
 - `/left_gripper_controller/joint_trajectory`
 - `/right_gripper_controller/joint_trajectory`
 
+## RealSense 카메라 실행
+
+세 대의 D435를 동시에 띄울 때는 아래 launch 파일을 사용합니다.
+
+```bash
+ros2 launch openarm_il wrist_realsense.launch.py
+```
+
+카메라 시리얼 번호 매핑:
+
+| 카메라 | 시리얼 번호 |
+|--------|------------|
+| chest (`camera`) | 332322072253 |
+| left wrist (`left_wrist_camera`) | 317222072848 |
+| right wrist (`right_wrist_camera`) | 327122079310 |
+
+publish되는 토픽 (camera_namespace = camera_name 구조):
+
+```text
+/camera/camera/color/image_raw
+/left_wrist_camera/left_wrist_camera/color/image_raw
+/right_wrist_camera/right_wrist_camera/color/image_raw
+```
+
+재시작 시 이전 프로세스를 먼저 정리합니다.
+
+```bash
+pkill -9 -f "realsense"
+```
+
 ## Troubleshooting
+
+**"Frames didn't arrived within 5 seconds" 경고가 반복되는 경우**
+
+USB 대역폭 부족이 원인입니다. 640×480×30fps × 3대는 약 83 MB/s로 단일 USB 버스를 포화시킵니다. 현재 launch 파일은 424×240×15fps(약 14 MB/s)로 설정되어 있습니다. 해상도를 높이려면 카메라 3대를 서로 다른 USB 컨트롤러에 연결해야 합니다.
+
+```bash
+lsusb -t | grep -A2 "RealSense"  # USB 컨트롤러 분산 여부 확인
+```
+
+**wrist 카메라 이미지가 수신되지 않는 경우**
+
+RealSense는 `BEST_EFFORT` QoS로 publish합니다. `collect_real_demo`의 카메라 구독은 `qos_profile_sensor_data`를 사용해야 합니다. `RELIABLE` QoS subscriber는 `BEST_EFFORT` publisher와 호환되지 않아 메시지를 수신하지 못합니다.
+
+**토픽은 존재하지만 이미지가 안 보이는 경우**
+
+이전 realsense 프로세스가 남아 같은 시리얼 번호 카메라를 두 노드가 점유하는 경우입니다. `pkill -9 -f "realsense"` 후 재launch합니다.
 
 - RealSense camera not publishing: run `ros2 topic list` and confirm the camera driver is launched before recording.
 - Missing wrist cameras: wrist cameras are optional; the recorder writes zero images matching the chest image size and logs missing optional streams.
@@ -361,3 +444,58 @@ Additional Phase 2 docs:
 - `docs/HAND_POSE_FORMAT.md`
 - `docs/RETARGETING.md`
 - `docs/PSEUDO_DEMONSTRATION.md`
+
+## Phase 3: ACT Pseudo-Real Co-Training Wrapper
+
+Phase 3 trains ACT on exported real and pseudo robot demonstrations while keeping ACT internals unchanged. The wrapper preserves `sample_type` and `confidence`, builds real/pseudo-balanced batches, and applies:
+
+```text
+L = lambda_real * L_real + lambda_pseudo * L_pseudo
+```
+
+Default weights:
+
+```text
+lambda_real = 1.0
+lambda_pseudo = 0.3
+```
+
+Dataset statistics:
+
+```bash
+python3 training/dataset_statistics.py \
+  --dataset-path ~/datasets/openarm_il/lerobot_pseudo_real
+```
+
+Train real only:
+
+```bash
+python3 training/train_act_pseudo_real.py \
+  --config config/phase3_act_real_only.yaml
+```
+
+Train pseudo-real:
+
+```bash
+python3 training/train_act_pseudo_real.py \
+  --config config/phase3_act_pseudo_real.yaml
+```
+
+Run ablations:
+
+```bash
+python3 training/run_ablation.py \
+  --config config/phase3_ablation.yaml
+```
+
+Evaluate:
+
+```bash
+python3 training/evaluate_act.py \
+  --checkpoint runs/openarm_il_phase3/best.ckpt \
+  --dataset-path ~/datasets/openarm_il/lerobot_pseudo_real
+```
+
+Phase 3 documentation:
+
+- `docs/PHASE3_ACT_COTRAINING.md`
