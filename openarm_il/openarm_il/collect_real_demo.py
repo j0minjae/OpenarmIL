@@ -30,6 +30,7 @@ class RealDemoRecorder:
     def __init__(self, args: argparse.Namespace) -> None:
         import rclpy
         from rclpy.node import Node
+        from rclpy.qos import qos_profile_sensor_data
         from sensor_msgs.msg import Image, JointState
         from std_msgs.msg import Float64MultiArray
         from trajectory_msgs.msg import JointTrajectory
@@ -60,7 +61,7 @@ class RealDemoRecorder:
 
         self.node.create_subscription(JointState, self.topics.joint_states, self._joint_state_cb, 20)
         for camera_name, topic in self.topics.cameras.items():
-            self.node.create_subscription(Image, topic, self._camera_cb(camera_name), 10)
+            self.node.create_subscription(Image, topic, self._camera_cb(camera_name), qos_profile_sensor_data)
         for action_name, topic in self.topics.actions.items():
             msg_type = JointTrajectory if "trajectory" in topic else Float64MultiArray
             self.node.create_subscription(msg_type, topic, self._action_cb(action_name), 10)
