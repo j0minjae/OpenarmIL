@@ -314,29 +314,56 @@ Defaults are configured in `config/camera_topics.yaml`:
 - `/left_gripper_controller/joint_trajectory`
 - `/right_gripper_controller/joint_trajectory`
 
-## RealSense 카메라 실행
+## 카메라 Bringup 런치파일
 
-세 대의 D435를 동시에 띄울 때는 아래 launch 파일을 사용합니다.
+카메라 bringup은 용도에 따라 두 런치파일로 완전히 분리되어 있습니다.
+**두 런치파일을 동시에 실행하면 안 됩니다** — serial 317222072848 카메라를 공유하므로 USB 디바이스 충돌이 발생합니다.
+
+### Robot data 수집용 (3대)
 
 ```bash
-ros2 launch openarm_il wrist_realsense.launch.py
+ros2 launch openarm_il robot_camera_bringup.launch.py
 ```
 
-카메라 시리얼 번호 매핑:
+| 카메라 | 시리얼 번호 | 토픽 |
+|--------|------------|------|
+| `chest_camera` | 332322072253 | `/chest_camera/color/image_raw` |
+| `left_wrist_camera` | 317222072848 | `/left_wrist_camera/color/image_raw` |
+| `right_wrist_camera` | 327122079310 | `/right_wrist_camera/color/image_raw` |
 
-| 카메라 | 시리얼 번호 |
-|--------|------------|
-| chest (`camera`) | 332322072253 |
-| left wrist (`left_wrist_camera`) | 317222072848 |
-| right wrist (`right_wrist_camera`) | 327122079310 |
+### Human data 수집용 (1대 + recorder)
 
-publish되는 토픽 (camera_namespace = camera_name 구조):
+robot data 수집 시 left_wrist_camera로 쓰던 물리 카메라 1대를 `human_camera`라는 이름으로 재사용하며, space bar로 start/stop하는 recorder 노드를 함께 기동합니다.
 
-```text
-/camera/camera/color/image_raw
-/left_wrist_camera/left_wrist_camera/color/image_raw
-/right_wrist_camera/right_wrist_camera/color/image_raw
+```bash
+ros2 launch openarm_il human_camera_bringup.launch.py \
+    task_name:=handover \
+    output_dir:=~/datasets/openarm_human_demo
 ```
+
+| 런치 인자 | 기본값 | 설명 |
+|-----------|--------|------|
+| `task_name` | `default_task` | 에피소드 저장 경로 내 task 레이블 |
+| `output_dir` | `~/datasets/openarm_human_demo` | 에피소드 루트 디렉토리 |
+| `monitor` | `false` | 에피소드 저장 후 마지막 프레임 미리보기 |
+
+발행 토픽: `/human_camera/color/image_raw`
+키 조작: `SPACE` 녹화 시작/중지, `q` / `ESC` 종료
+
+### 확정 카메라 파라미터
+
+| 파라미터 | 값 | 근거 |
+|----------|-----|------|
+| 해상도 | 424×240 | USB2 환경에서 640×480×15fps×3대는 대역폭 초과로 disconnect 발생 → 최소 안정 해상도 확정 |
+| fps | 15 | USB 대역폭 제약 |
+| 포맷 | RGB8 | RealSense D435 기본 컬러 포맷 |
+| enable_depth | false | 불필요한 스트림 차단으로 대역폭 절약 |
+| enable_infra1/2 | false | 〃 |
+| enable_rgbd | false | 〃 |
+| enable_sync | false | 〃 |
+| align_depth.enable | false | 〃 |
+| pointcloud.enable | false | 〃 |
+| rgb_camera.global_time_enabled | 기본값(true) | 카메라 간 타임스탬프 정합성을 위해 명시적으로 건드리지 않음 |
 
 재시작 시 이전 프로세스를 먼저 정리합니다.
 
@@ -348,19 +375,28 @@ pkill -9 -f "realsense"
 
 **"Frames didn't arrived within 5 seconds" 경고가 반복되는 경우**
 
-USB 대역폭 부족이 원인입니다. 640×480×30fps × 3대는 약 83 MB/s로 단일 USB 버스를 포화시킵니다. 현재 launch 파일은 424×240×15fps(약 14 MB/s)로 설정되어 있습니다. 해상도를 높이려면 카메라 3대를 서로 다른 USB 컨트롤러에 연결해야 합니다.
+USB 대역폭 부족이 원인입니다. 640×480×15fps×3대는 단일 USB 버스를 포화시킵니다. 현재 런치파일은 424×240×15fps로 고정되어 있습니다. 카메라 3대를 서로 다른 USB 컨트롤러에 분산 연결하면 해상도를 높일 수 있습니다.
 
 ```bash
-lsusb -t | grep -A2 "RealSense"  # USB 컨트롤러 분산 여부 확인
+lsusb -t  # USB 컨트롤러 분산 여부 확인
 ```
 
-**wrist 카메라 이미지가 수신되지 않는 경우**
+**USB autosuspend로 인한 주기적 disconnect**
 
-RealSense는 `BEST_EFFORT` QoS로 publish합니다. `collect_real_demo`의 카메라 구독은 `qos_profile_sensor_data`를 사용해야 합니다. `RELIABLE` QoS subscriber는 `BEST_EFFORT` publisher와 호환되지 않아 메시지를 수신하지 못합니다.
+D435 자체는 udev 규칙(`/etc/udev/rules.d/99-realsense-usb-power.rules`, `idVendor=8086 idProduct=0b07`)으로 autosuspend가 비활성화되어 있습니다. 그러나 상위 USB 허브의 autosuspend가 `auto`로 남아있으면 주기적으로 disconnect가 발생할 수 있습니다. 세션마다 아래 명령으로 허브 경로를 확인하고 필요시 수동으로 고정합니다(영구 적용 아님).
+
+```bash
+cat /sys/bus/usb/devices/<hub-path>/power/control   # auto 이면 suspend 활성
+echo on | sudo tee /sys/bus/usb/devices/<hub-path>/power/control
+```
+
+**wrist/human 카메라 이미지가 수신되지 않는 경우**
+
+RealSense는 `BEST_EFFORT` QoS로 publish합니다. subscriber가 `RELIABLE` QoS를 사용하면 메시지를 수신하지 못합니다. `collect_real_demo`는 `qos_profile_sensor_data`(BEST_EFFORT)를 사용하도록 수정되어 있습니다. 다른 subscriber를 추가할 때도 동일하게 적용해야 합니다.
 
 **토픽은 존재하지만 이미지가 안 보이는 경우**
 
-이전 realsense 프로세스가 남아 같은 시리얼 번호 카메라를 두 노드가 점유하는 경우입니다. `pkill -9 -f "realsense"` 후 재launch합니다.
+이전 realsense 프로세스가 남아 동일 시리얼 번호 카메라를 두 노드가 점유하는 경우입니다. `pkill -9 -f "realsense"` 후 재launch합니다.
 
 - RealSense camera not publishing: run `ros2 topic list` and confirm the camera driver is launched before recording.
 - Missing wrist cameras: wrist cameras are optional; the recorder writes zero images matching the chest image size and logs missing optional streams.
