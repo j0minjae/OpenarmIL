@@ -48,7 +48,7 @@ class HumanDemoRecorderNode(Node):
 
         self.declare_parameter("image_topic", "/human_camera/color/image_raw")
         self.declare_parameter("task_name", "default_task")
-        self.declare_parameter("output_dir", "~/datasets/openarm_human_demo")
+        self.declare_parameter("output_dir", "/home/home/Project/OpenarmIL/datasets/openarm_human_demo")
         self.declare_parameter("fps", 30.0)
         self.declare_parameter("monitor", False)
 

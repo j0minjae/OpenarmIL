@@ -25,7 +25,7 @@ def generate_launch_description():
     )
     output_dir_arg = DeclareLaunchArgument(
         "output_dir",
-        default_value="~/datasets/openarm_human_demo",
+        default_value="/home/home/Project/OpenarmIL/datasets/openarm_human_demo",
         description="Root directory for recorded episodes.",
     )
     fps_arg = DeclareLaunchArgument(
@@ -61,7 +61,7 @@ def generate_launch_description():
             "enable_color": "true",
             "enable_depth": "false",
             "pointcloud.enable": "false",
-            "rgb_camera.color_profile": ["640,480,", LaunchConfiguration("fps")],
+            "rgb_camera.color_profile": ["424,240,", LaunchConfiguration("fps")],
         }.items(),
     )
 
