@@ -395,6 +395,129 @@ ros2 launch openarm_il human_camera_bringup.launch.py \
 pkill -9 -f "realsense"
 ```
 
+## Robot Teleop Data Collection (Quest3 + CAN-FD)
+
+`robot_data_collection.launch.py` combines everything needed to record a
+real Quest3-teleoperated demonstration in one command: the 3-camera bringup,
+the real OpenArm bringup (CAN-FD, `use_fake_hardware:=false`), the VR teleop
+stack, and a space-bar-toggled recorder.
+
+```bash
+ros2 launch openarm_il robot_data_collection.launch.py \
+    task_name:=pick_and_place \
+    output_dir:=~/datasets/openarm_il/raw_teleop \
+    right_can_interface:=can0 \
+    left_can_interface:=can1
+```
+
+VR teleop 경로는 `openarmx_teleop_vr/launch/openarm_controller_real.launch.py`가
+문서화한 실제 사용 절차 그대로입니다: `openarm_controller` 패키지의
+`openarm_teleop_node`(SoT IK solver)가 7 arm joint + gripper를 하나로 합친
+8-element 배열을 `/left,right_forward_position_controller/commands`로
+publish하므로, 반드시 `controllers_file:=openarm_bimanual_controllers_vr_teleop.yaml`
+(forward_position_controller가 8 joint로 설정되어 있고 별도 `gripper_controller`가
+없음)과 짝을 맞춰야 합니다. 기본 `openarm_bimanual_controllers.yaml`(7 joint
+`forward_position_controller` + 별도 `gripper_controller`)과 조합하면
+`ForwardCommandController`가 array 크기 불일치로 매 cycle
+`The update call of the following controller returned an error` 를 뱉습니다 —
+`robot_data_collection.launch.py`는 이를 피하기 위해 `controllers_file` 기본값을
+`openarm_bimanual_controllers_vr_teleop.yaml`로 지정합니다.
+
+(참고: `openarmx_teleop_vr_node.py`/`openarm_teleop_vr_real.launch.py` 경로도
+동일하게 7 arm joint + gripper를 합친 8-element 배열을 publish하도록 설계되어
+있습니다 — `openarmx_sim_controllers.yaml`도 8-joint `forward_position_controller`로
+구성되어 있어 원래부터 gripper를 분리하지 않는 것이 의도된 설계입니다. 이
+노드 자체의 문제가 아니라 어떤 `controllers_file`과 짝을 맞추는지가
+핵심입니다.)
+
+**두 런치파일을 동시에 실행하면 안 됩니다** — `human_camera_bringup.launch.py`와
+동시에 실행하지 마십시오 (left_wrist_camera와 human_camera가 동일한 물리 카메라,
+serial 317222072848을 공유합니다).
+
+| 런치 인자 | 기본값 | 설명 |
+|-----------|--------|------|
+| `task_name` | `default_task` | 에피소드 저장 경로 내 task 레이블 |
+| `output_dir` | `~/datasets/openarm_il/raw_teleop` | 에피소드 루트 디렉토리 |
+| `monitor` | `false` | 에피소드 저장 후 chest camera 마지막 프레임 미리보기 |
+| `use_fake_hardware` | `false` | `openarm.bimanual.launch.py`로 전달됨 |
+| `robot_controller` | `forward_position_controller` | 〃, VR teleop이 명령하는 컨트롤러와 일치해야 함 |
+| `controllers_file` | `openarm_bimanual_controllers_vr_teleop.yaml` | 〃, `openarm_teleop_node`의 8-element 배열과 짝이 맞는 컨트롤러 설정 |
+| `right_can_interface` | `can0` | 〃 |
+| `left_can_interface` | `can1` | 〃 |
+
+키 조작은 `human_data_recorder`와 동일합니다: `SPACE`로 녹화 시작/중지 (전역
+핫키, 터미널 포커스 무관), `q` / `ESC`로 종료, headless 기본 + 시작 1회/종료
+2회 터미널 벨.
+
+### 저장되는 데이터
+
+매 timestep마다 기록되는 것은 이미지 3채널, 관절 각도(양팔 [2, 8], CAN-FD
+원본 값), 타임스탬프뿐입니다. **EEF pose, gripper state 정규화값 등 유도
+데이터는 이 단계에서 계산하지 않습니다** — `openarm_teleop_node`(SoT IK solver)
+내부에서 계산된 EEF pose는 어떤 토픽으로도 publish되지 않으므로 (in-loop
+상태로만 존재; `PoseStamped`는 Quest3 컨트롤러 pose를 구독만 함), 필요하면
+저장된 관절 각도로부터 후처리 단계에서 FK를 재계산합니다.
+같은 이유로 이 기존 `EpisodeWriter`/`dataset_schema.yaml` 스키마(모든 프레임에
+`observation_ee_pose`/`action`을 필수로 요구)를 그대로 재사용하지 않고,
+`teleop_episode_writer.py`가 별도의 raw 전용 포맷으로 저장합니다.
+
+```text
+<output_dir>/<task_name>/episode_0001/
+    chest_camera.mp4
+    chest_camera_timestamps.csv        # frame_idx, wall_time, ros_stamp
+    left_wrist_camera.mp4
+    left_wrist_camera_timestamps.csv
+    right_wrist_camera.mp4
+    right_wrist_camera_timestamps.csv
+    joint_angles.csv                   # sample_idx, wall_time, ros_stamp, left_joint1..7, left_gripper, right_joint1..7, right_gripper
+    metadata.json                      # camera_frame_counts, joint_sample_count, joint_columns, fps
+```
+
+- 카메라 3채널은 각각 독립적으로 타임스탬프가 찍히며 서로 강제 동기화되지
+  않습니다. `robot_camera_bringup.launch.py`가 요청하는 `rgb_camera.color_profile`
+  `424,240,30`은 실제 하드웨어에서 `ros2 topic hz`로 확인해도 안정적으로
+  ~30Hz로 발행됩니다. `robot_data_collection.launch.py`의 `fps` 인자 기본값도
+  `30`입니다. (참고: 개발 중 이 값을 `60`으로 착각한 적이 있는데, 원인은
+  카메라가 아니라 이전 합성 데이터 테스트용 스크립트가 정리되지 않고 같은
+  토픽에 중복 publish하고 있었기 때문이었습니다 — `ros2 topic info
+  <image_topic> --verbose`로 `Publisher count`가 1인지 확인하면 이런 문제를
+  바로 잡아낼 수 있습니다.) 다른 환경에서 재현 시 mp4 재생 속도가 이상하면
+  `ros2 topic hz`로 실제 카메라 rate를 확인하고 `fps:=` 값을 맞추십시오.
+- `joint_angles.csv`는 `/joint_states`(controller_manager 750Hz, CAN-FD 원본)
+  에서 수신되는 매 메시지를 그대로 기록합니다 (다운샘플링 없음). 16개 컬럼은
+  `[left_joint1..7, left_gripper, right_joint1..7, right_gripper]` 순서이며
+  `(2, 8)`로 reshape하면 `[left_arm, right_arm]`이 됩니다.
+- 세 카메라 CSV와 `joint_angles.csv`의 `wall_time`/`ros_stamp` 컬럼으로 사후
+  시간 정렬합니다.
+
+### 확인 절차 (하드웨어 필요, 이 환경에서는 직접 검증 불가)
+
+이 launch 파일의 카메라/recorder 부분은 합성(synthetic) 이미지·joint_states
+퍼블리셔로 space-bar 토글, mp4/CSV 프레임 수 일치를 검증했습니다
+(`teleop_episode_writer.py`, `robot_data_recorder.py`의 `classify_key` 유닛
+테스트 참고). 그러나 이 워크스페이스에는 실제 CAN-FD로 연결된 로봇과 Quest3
+헤드셋이 없어 전체 통합 launch는 실행하지 못했습니다. 실제 로봇에서 아래를
+확인하십시오.
+
+```bash
+# 1. 세 카메라가 30Hz 근처로 안정적인지 확인
+ros2 topic hz /chest_camera/color/image_raw
+ros2 topic hz /left_wrist_camera/color/image_raw
+ros2 topic hz /right_wrist_camera/color/image_raw
+
+# 2. /joint_states가 실제로 발행되는지 확인
+ros2 topic hz /joint_states
+
+# 3. SPACE로 녹화 시작(beep 1회 + 로그) -> Quest3로 조작 -> SPACE로 정지(beep 2회 + 저장 완료 로그)
+# 4. 저장된 mp4 프레임 수와 CSV 행 수가 일치하는지 확인
+python3 -c "
+import cv2
+cap = cv2.VideoCapture('<episode_dir>/chest_camera.mp4')
+print(int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+"
+wc -l <episode_dir>/chest_camera_timestamps.csv   # frame count + 1 (header)
+```
+
 ## Troubleshooting
 
 **"Frames didn't arrived within 5 seconds" 경고가 반복되는 경우**

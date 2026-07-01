@@ -7,6 +7,7 @@ OpenArm V10 bimanual robot 관련 ROS2 패키지와 imitation learning 데이터
 | 패키지 | 설명 |
 |--------|------|
 | `openarm_il` | Phase 1 real robot demonstration collection, validation, visualization, LeRobot-style export |
+| `openarm_human_demo` | 로봇과 무관한 독립 human demonstration 영상 수집 도구 (space bar 토글, D435) |
 | `openarm_controller` | Python IK solver and VR teleop node |
 | `openarm_description` | OpenArm URDF/mesh/RViz assets |
 | `openarm_ros2` | OpenArm bringup and ros2_control hardware interface |
@@ -14,7 +15,7 @@ OpenArm V10 bimanual robot 관련 ROS2 패키지와 imitation learning 데이터
 | `openarmx_description` | OpenArmX description assets |
 | `openarmx_teleop_vr` | VR teleoperation utilities |
 
-상세 Phase 1 문서는 `openarm_il/README.md`를 기준으로 관리합니다.
+상세 Phase 1 문서는 `openarm_il/README.md`를 기준으로 관리합니다. 새 LeRobot `record` 기반 Robot API 경로는 `openarm_il/docs/LEROBOT_RECORD.md`와 `openarm_il/docs/OPENARM_ROBOT_API.md`에 정리되어 있습니다.
 
 ## Phase 1 사용법
 
@@ -187,6 +188,51 @@ cd /home/home/Project/OpenarmIL/src/openarm_il
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -v
 ```
 
+## 데이터 수집 런치파일 실행 방법
+
+세 가지 독립적인 데이터 수집 경로가 있습니다. 서로 다른 물리 카메라/토픽을
+쓰지 않는 한 **동시에 실행하지 마십시오** (특히 아래 첫 두 개는 left_wrist_camera와
+human_camera가 동일한 물리 카메라, serial 317222072848을 공유합니다).
+
+**1. 사람 시연 영상만 단독 수집** (로봇/teleop 파이프라인과 무관, `openarm_human_demo`)
+
+```bash
+ros2 launch openarm_human_demo human_data_collection.launch.py \
+    task_name:=test_task \
+    output_dir:=~/datasets/openarm_human_demo
+```
+
+상세: `openarm_human_demo/README.md`
+
+**2. Chest 카메라 1대로 사람 시연 수집** (`openarm_il`, robot data 수집용 카메라와 serial 공유하므로 동시 실행 금지)
+
+```bash
+ros2 launch openarm_il human_camera_bringup.launch.py \
+    task_name:=handover \
+    output_dir:=~/datasets/openarm_human_demo
+```
+
+**3. Quest3 teleop 중 로봇 데모 수집** (카메라 3대 + OpenArm CAN-FD bringup + Quest3 VR teleop + recorder를 한 번에 실행, `openarm_il`)
+
+```bash
+sudo ip link set can0 type can bitrate 1000000 dbitrate 5000000 fd on && sudo ip link set can0 up
+sudo ip link set can1 type can bitrate 1000000 dbitrate 5000000 fd on && sudo ip link set can1 up
+ip -details link show can0
+ip -details link show can1
+
+
+ros2 launch openarm_il robot_data_collection.launch.py \
+    task_name:=pick_and_place \
+    output_dir:=~/datasets/openarm_il/raw_teleop \
+    right_can_interface:=can0 \
+    left_can_interface:=can1
+```
+
+공통 조작: `SPACE`로 녹화 시작/중지(전역 핫키, 터미널 포커스 무관), `q`/`ESC`로
+종료, headless 기본 + 터미널 벨(시작 1회/종료 2회) 피드백. 저장 포맷/토픽/검증
+절차 상세는 `openarm_il/README.md`의 "Robot Teleop Data Collection" 절을
+참고합니다.
+
 ## Troubleshooting
 
 - RealSense camera not publishing: camera driver 실행 여부와 `ros2 topic list | grep image_raw`를 확인합니다.
@@ -240,3 +286,33 @@ python3 scripts/convert_to_lerobot.py \
 - `openarm_il/docs/HAND_POSE_FORMAT.md`
 - `openarm_il/docs/RETARGETING.md`
 - `openarm_il/docs/PSEUDO_DEMONSTRATION.md`
+
+## Phase 3 요약
+
+Phase 3는 LeRobot-compatible real/pseudo dataset을 ACT 학습 파이프라인에 넣기 위한 wrapper입니다. ACT architecture, Transformer, CVAE, encoder/decoder, action chunking은 수정하지 않습니다.
+
+기본 명령:
+
+```bash
+cd /home/home/Project/OpenarmIL/src/openarm_il
+
+python3 training/dataset_statistics.py \
+  --dataset-path ~/datasets/openarm_il/lerobot_pseudo_real
+
+python3 training/train_act_pseudo_real.py \
+  --config config/phase3_act_real_only.yaml
+
+python3 training/train_act_pseudo_real.py \
+  --config config/phase3_act_pseudo_real.yaml
+
+python3 training/run_ablation.py \
+  --config config/phase3_ablation.yaml
+
+python3 training/evaluate_act.py \
+  --checkpoint runs/openarm_il_phase3/best.ckpt \
+  --dataset-path ~/datasets/openarm_il/lerobot_pseudo_real
+```
+
+상세 문서:
+
+- `openarm_il/docs/PHASE3_ACT_COTRAINING.md`

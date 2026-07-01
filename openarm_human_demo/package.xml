@@ -1,27 +1,19 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>openarm_il</name>
+  <name>openarm_human_demo</name>
   <version>0.1.0</version>
-  <description>OpenArm V10 real robot demonstration collection and ACT dataset export.</description>
+  <description>Standalone ROS2 tool for recording human demonstration video for OpenArm imitation learning, independent of the teleoperation pipeline.</description>
   <maintainer email="alswo0300@khu.ac.kr">minjae</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
-  <depend>std_msgs</depend>
-  <depend>trajectory_msgs</depend>
   <depend>cv_bridge</depend>
 
-  <exec_depend>python3-numpy</exec_depend>
-  <exec_depend>python3-yaml</exec_depend>
-  <exec_depend>python3-pil</exec_depend>
-  <exec_depend>python3-matplotlib</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-pynput</exec_depend>
   <exec_depend>realsense2_camera</exec_depend>
-  <exec_depend>openarm_bringup</exec_depend>
-  <exec_depend>openarmx_teleop_vr</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 
