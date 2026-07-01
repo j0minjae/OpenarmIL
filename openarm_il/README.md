@@ -116,9 +116,33 @@ openarm_il/config/dataset_schema.yaml
 
 ### 3. 실제 로봇 bringup 및 카메라 실행
 
-`openarm_il`은 로봇 명령을 publish하지 않는 passive recorder입니다. 먼저 별도 터미널에서 OpenArm bringup, ros2_control controller, RealSense camera driver를 실행해야 합니다.
+`openarm_il`은 로봇 명령을 publish하지 않는 passive recorder입니다. 먼저 별도 터미널에서 OpenArm bringup, ros2_control controller, 카메라 드라이버를 실행해야 합니다.
 
-필수 확인 토픽:
+**Robot data 수집용 카메라 bringup (3대)**
+
+```bash
+ros2 launch openarm_il robot_camera_bringup.launch.py
+```
+
+발행 토픽:
+- `/chest_camera/color/image_raw`
+- `/left_wrist_camera/color/image_raw`
+- `/right_wrist_camera/color/image_raw`
+
+**Human data 수집용 카메라 bringup (1대 + recorder)**
+
+robot data 수집과 동시에 실행하면 안 됩니다 (동일 물리 카메라 serial 317222072848 충돌).
+
+```bash
+ros2 launch openarm_il human_camera_bringup.launch.py \
+    task_name:=handover \
+    output_dir:=~/datasets/openarm_human_demo
+```
+
+발행 토픽: `/human_camera/color/image_raw`
+키 조작: `SPACE` 녹화 시작/중지, `q` / `ESC` 종료
+
+필수 토픽 확인:
 
 ```bash
 ros2 topic echo /joint_states --once
@@ -134,7 +158,7 @@ ros2 run openarm_il inspect_topics
 필수 토픽은 다음 두 개입니다.
 
 - `/joint_states`
-- chest RGB camera topic: 기본값 `/camera/camera/color/image_raw`
+- chest RGB camera topic: 기본값 `/chest_camera/color/image_raw`
 
 left/right wrist camera와 action command topic은 optional입니다. wrist camera가 없으면 chest image와 같은 크기의 zero image가 저장됩니다.
 
